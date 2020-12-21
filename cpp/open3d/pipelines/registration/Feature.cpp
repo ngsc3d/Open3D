@@ -154,6 +154,45 @@ std::shared_ptr<Feature> ComputeFPFHFeature(
     return feature;
 }
 
+std::shared_ptr<Feature> ComputeFPFHFeature(geometry::PointCloud &input) {
+    auto feature = ComputeFPFHFeature(
+            input, geometry::KDTreeSearchParamHybrid(3, 150));
+
+    double threshold = 40.;
+    size_t size = input.points_.size();
+    int valid_row = 0;
+    double *feature_data = new double[size * 33];
+    for (int i = 0; i < input.points_.size(); ++i) {
+        double v1 = feature->data_(5, i);
+        double v2 = feature->data_(16, i);
+        double v3 = feature->data_(27, i);
+
+        if (!(v1 > threshold && v2 > threshold && v3 > threshold))  //! plane
+        {
+            for (int j = 0; j < 33; j++)
+                feature_data[valid_row * 33 + j] = feature->data_(j, i);
+
+            input.points_[valid_row] = input.points_[i];
+            input.normals_[valid_row] = input.normals_[i];
+            valid_row++;
+        }
+    }
+
+    input.points_.resize(valid_row);
+    input.normals_.resize(valid_row);
+
+    size = valid_row;
+    feature->data_.resize(33, size);
+    for (int i = 0; i < size; ++i) {
+        for (int j = 0; j < 33; j++)
+            feature->data_(j, i) = feature_data[i * 33 + j];
+    }
+
+    delete[] feature_data;
+
+    return feature;
+}
+
 }  // namespace registration
 }  // namespace pipelines
 }  // namespace open3d

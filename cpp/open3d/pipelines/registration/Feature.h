@@ -70,9 +70,9 @@ public:
 /// \param search_param KDTree KNN search parameter.
 std::shared_ptr<Feature> ComputeFPFHFeature(
         const geometry::PointCloud &input,
-        const geometry::KDTreeSearchParam &search_param =
-                geometry::KDTreeSearchParamKNN());
+        const geometry::KDTreeSearchParam &search_param);
 
+std::shared_ptr<Feature> ComputeFPFHFeature(geometry::PointCloud &input);
 }  // namespace registration
 }  // namespace pipelines
 }  // namespace open3d

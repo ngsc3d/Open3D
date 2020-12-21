@@ -138,6 +138,7 @@ public:
     /// \param voxel_size Defines the resolution of the voxel grid,
     /// smaller value leads to denser output point cloud.
     std::shared_ptr<PointCloud> VoxelDownSample(double voxel_size) const;
+    std::shared_ptr<PointCloud> VoxelDownSample() const;
 
     /// \brief Function to downsample using geometry.PointCloud.VoxelDownSample
     ///

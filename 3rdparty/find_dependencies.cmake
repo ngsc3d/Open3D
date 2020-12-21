@@ -283,6 +283,9 @@ function(set_local_or_remote_url URL)
     endif()
 endfunction()
 
+include(ProcessorCount)
+ProcessorCount(NPROC)
+
 # Threads
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE) # -pthread instead of -lpthread
@@ -537,15 +540,33 @@ build_3rdparty_library(3rdparty_tritriintersect DIRECTORY tomasakeninemoeller IN
 set(TRITRIINTERSECT_TARGET "3rdparty_tritriintersect")
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${TRITRIINTERSECT_TARGET}")
 
-# RealSense
+# librealsense SDK
 if (BUILD_LIBREALSENSE)
-    message(STATUS "Building third-party library librealsense from source")
-    add_subdirectory(${Open3D_3RDPARTY_DIR}/librealsense)
-    import_3rdparty_library(3rdparty_realsense INCLUDE_DIRS ${Open3D_3RDPARTY_DIR}/librealsense/include/ LIBRARIES ${REALSENSE_LIBRARY})
-    add_dependencies(3rdparty_realsense ${REALSENSE_LIBRARY})
-    set(LIBREALSENSE_TARGET "3rdparty_realsense")
+    include(${Open3D_3RDPARTY_DIR}/librealsense/librealsense.cmake)
+    import_3rdparty_library(3rdparty_librealsense
+        INCLUDE_DIRS ${LIBREALSENSE_INCLUDE_DIR}
+        LIBRARIES    ${LIBREALSENSE_LIBRARIES}
+        LIB_DIR      ${LIBREALSENSE_LIB_DIR}
+    )
+    add_dependencies(3rdparty_librealsense ext_librealsense)
+    set(LIBREALSENSE_TARGET "3rdparty_librealsense")
     list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${LIBREALSENSE_TARGET}")
-endif ()
+
+    if (UNIX AND NOT APPLE)
+        # Ubuntu dependency: libusb-1.0.0-dev
+        find_library(LIBUSB_LIB usb-1.0)
+        find_path(LIBUSB_INC libusb.h HINTS PATH_SUFFIXES libusb-1.0)
+        if (NOT LIBUSB_LIB)
+            message(FATAL_ERROR "libusb-1.0 library not found, please install libusb-1.0.0-dev.")
+        endif()
+        if (NOT LIBUSB_INC)
+            message(FATAL_ERROR "libusb-1.0 header not found, please install libusb-1.0.0-dev.")
+        endif()
+        message(STATUS "LIBUSB_LIB: ${LIBUSB_LIB}")
+        message(STATUS "LIBUSB_INC: ${LIBUSB_INC}")
+        target_link_libraries(3rdparty_librealsense INTERFACE ${LIBUSB_LIB})
+    endif()
+endif()
 
 # PNG
 if(USE_SYSTEM_PNG)
@@ -735,18 +756,14 @@ if(TARGET pybind11::module)
 endif()
 
 # Azure Kinect
-include(${Open3D_3RDPARTY_DIR}/azure_kinect/azure_kinect.cmake)
-if(BUILD_AZURE_KINECT)
-    if(TARGET k4a::k4a)
-        set(K4A_TARGET "k4a::k4a")
-        if(NOT BUILD_SHARED_LIBS)
-            list(APPEND Open3D_3RDPARTY_EXTERNAL_MODULES "k4a" "k4arecord")
-        endif()
-    else()
-        add_library(3rdparty_k4a INTERFACE)
-        target_include_directories(3rdparty_k4a INTERFACE ${k4a_INCLUDE_DIRS})
-        set(K4A_TARGET "3rdparty_k4a")
-    endif()
+set(BUILD_AZURE_KINECT_COMMENT "//") # Set include header files in Open3D.h
+if (BUILD_AZURE_KINECT)
+    include(${Open3D_3RDPARTY_DIR}/azure_kinect/azure_kinect.cmake)
+    import_3rdparty_library(3rdparty_k4a
+        INCLUDE_DIRS ${K4A_INCLUDE_DIR}
+    )
+    add_dependencies(3rdparty_k4a ext_k4a)
+    set(K4A_TARGET "3rdparty_k4a")
     list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${K4A_TARGET}")
 endif()
 
@@ -976,6 +993,9 @@ if(BUILD_RPC_INTERFACE)
     set(ZEROMQ_TARGET "3rdparty_zeromq")
     add_dependencies(${ZEROMQ_TARGET} ext_zeromq)
     list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${ZEROMQ_TARGET}")
+    if( DEFINED ZEROMQ_ADDITIONAL_LIBS )
+        list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS ${ZEROMQ_ADDITIONAL_LIBS})
+    endif()
 
     # msgpack
     include(${Open3D_3RDPARTY_DIR}/msgpack/msgpack_build.cmake)
@@ -1097,4 +1117,3 @@ if (WITH_FAISS)
     target_link_libraries(3rdparty_faiss INTERFACE ${CMAKE_DL_LIBS})
 endif()
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${FAISS_TARGET}")
-

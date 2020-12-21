@@ -344,6 +344,10 @@ std::shared_ptr<PointCloud> PointCloud::VoxelDownSample(
     return output;
 }
 
+std::shared_ptr<PointCloud> PointCloud::VoxelDownSample() const {
+    return VoxelDownSample(0.65);
+}
+
 std::tuple<std::shared_ptr<PointCloud>,
            Eigen::MatrixXi,
            std::vector<std::vector<int>>>

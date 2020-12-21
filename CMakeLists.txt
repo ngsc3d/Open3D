@@ -2,15 +2,15 @@
 if (WIN32)
     cmake_minimum_required(VERSION 3.18)
 else()
-    # If you're using Ubuntu 18.04 or older, we suggest you install the latest
+    # If you're using Ubuntu 18.04, we suggest you install the latest
     # CMake from the official repository https://apt.kitware.com/.
-    # CMake 3.15+ is required to allow linking with OBJECT libraries,
+    # CMake 3.17+ is required to allow linking with OBJECT libraries,
     # to prevent erroneous -gencode option deduplication with CUDA,
     # and to simplify generator expressions for selecting compile flags.
-    cmake_minimum_required(VERSION 3.15)
+    cmake_minimum_required(VERSION 3.17)
 endif()
 
-set (CMAKE_OSX_DEPLOYMENT_TARGET "10.9" CACHE STRING
+set (CMAKE_OSX_DEPLOYMENT_TARGET "10.14" CACHE STRING
     "Minimum OS X deployment version" FORCE)
 
 # Open3D build options
@@ -50,12 +50,13 @@ option(WITH_FAISS                 "Enable Faiss"                             ON 
 
 # Sensor options
 option(BUILD_LIBREALSENSE         "Build support for Intel RealSense camera" OFF)
+option(USE_SYSTEM_LIBREALSENSE    "Use system pre-installed librealsense"    OFF)
 option(BUILD_AZURE_KINECT         "Build support for Azure Kinect sensor"    OFF)
 # ML library options
 option(BUILD_TENSORFLOW_OPS       "Build ops for TensorFlow"                 OFF)
 option(BUILD_PYTORCH_OPS          "Build ops for PyTorch"                    OFF)
 option(BUNDLE_OPEN3D_ML           "Includes the Open3D-ML repo in the wheel" OFF)
-option(DEVELOPER_BUILD  "Add -dev+commit_hash to the project version number" ON )
+option(DEVELOPER_BUILD      "Add +commit_hash to the project version number" ON )
 
 # In ExternalProject_Add, if THIRD_PARTY_DOWNLOAD_DIR is specified, CMake will
 # first try to look for the required files in THIRD_PARTY_DOWNLOAD_DIR, before
@@ -111,10 +112,10 @@ if(POLICY CMP0091)
 endif()
 
 # Catch a few incompatible build options
-if((UNIX AND NOT APPLE) AND BUILD_LIBREALSENSE)
-    message(STATUS "Disabling RealSense since it is not fully supported on Linux.")
-    set(BUILD_LIBREALSENSE OFF)
-endif()
+#if((UNIX AND NOT APPLE) AND BUILD_LIBREALSENSE)
+#    message(STATUS "Disabling RealSense since it is not fully supported on Linux.")
+#    set(BUILD_LIBREALSENSE OFF)
+#endif()
 if (APPLE AND ENABLE_HEADLESS_RENDERING)
     message(STATUS "Headless rendering is not supported on Mac OS")
     set(ENABLE_HEADLESS_RENDERING OFF)
@@ -127,10 +128,6 @@ if(ENABLE_HEADLESS_RENDERING AND (USE_SYSTEM_GLEW OR USE_SYSTEM_GLFW))
     message(STATUS "Headless rendering requires customized GLEW and GLFW builds")
     set(USE_SYSTEM_GLEW OFF)
     set(USE_SYSTEM_GLFW OFF)
-endif()
-if(BUILD_RPC_INTERFACE AND WIN32)
-    message(STATUS "The RPC interface is currently unsupported on Windows.")
-    set(BUILD_RPC_INTERFACE OFF)
 endif()
 if(BUNDLE_OPEN3D_ML AND NOT (BUILD_TENSORFLOW_OPS OR BUILD_PYTORCH_OPS))
     message(SEND_ERROR "3DML depends on TensorFlow or PyTorch Ops. Enable them with -DBUILD_TENSORFLOW_OPS=ON or -DBUILD_PYTORCH_OPS=ON")
@@ -145,8 +142,8 @@ foreach(ver ${OPEN3D_VERSION_READ})
 endforeach()
 set(OPEN3D_VERSION_DEVHASH "")
 if(DEVELOPER_BUILD)
-    execute_process(COMMAND git log --pretty=format:%h -n 1
-        OUTPUT_VARIABLE GIT_REV ERROR_QUIET)
+    execute_process(COMMAND git -C "${CMAKE_SOURCE_DIR}" log --pretty=format:%h -n 1
+        OUTPUT_VARIABLE GIT_REV)
     if (GIT_REV)
         set(OPEN3D_VERSION_DEVHASH "+${GIT_REV}")
     endif()
@@ -373,11 +370,14 @@ function(open3d_set_global_properties target)
             target_compile_definitions(${target} PRIVATE BUILD_CACHED_CUDA_MANAGER)
         endif()
     endif()
+    if(BUILD_GUI)
+        target_compile_definitions(${target} PRIVATE BUILD_GUI)
+    endif()
     if(USE_BLAS)
         target_compile_definitions(${target} PRIVATE USE_BLAS)
     endif()
     if(BUILD_RPC_INTERFACE)
-        target_compile_definitions(${target} PRIVATE BUILD_RPC_INTERFACE)
+        target_compile_definitions(${target} PRIVATE BUILD_RPC_INTERFACE ZMQ_STATIC)
     endif()
     if(GLIBCXX_USE_CXX11_ABI)
         target_compile_definitions(${target} PUBLIC _GLIBCXX_USE_CXX11_ABI=1)
@@ -430,6 +430,9 @@ function(open3d_set_global_properties target)
     # TBB static version is used
     # See: https://github.com/wjakob/tbb/commit/615d690c165d68088c32b6756c430261b309b79c
     target_compile_definitions(${target} PRIVATE __TBB_LIB_NAME=tbb_static)
+    if(WITH_FAISS)
+        target_compile_definitions(${target} PRIVATE WITH_FAISS)
+    endif()
 endfunction()
 
 macro(add_source_group module_name)
@@ -501,6 +504,7 @@ message(STATUS "Enabled Features:")
 open3d_aligned_print("OpenMP" "${WITH_OPENMP}")
 open3d_aligned_print("Headless Rendering" "${ENABLE_HEADLESS_RENDERING}")
 open3d_aligned_print("Azure Kinect Support" "${BUILD_AZURE_KINECT}")
+open3d_aligned_print("Intel RealSense Support" "${BUILD_LIBREALSENSE}")
 open3d_aligned_print("CUDA Support" "${BUILD_CUDA_MODULE}")
 open3d_aligned_print("Build GUI" "${BUILD_GUI}")
 open3d_aligned_print("Build Shared Library" "${BUILD_SHARED_LIBS}")

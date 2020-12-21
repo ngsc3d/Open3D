@@ -326,12 +326,75 @@ Window::Window(const std::string& title,
     // library.
     if (!theme.font_path.empty()) {
         ImGuiIO& io = ImGui::GetIO();
-        impl_->imgui_.system_font = io.Fonts->AddFontFromFileTTF(
-                theme.font_path.c_str(), float(theme.font_size));
+        int en_fonts = 0;
+        for (auto& custom : Application::GetInstance().GetUserFontInfo()) {
+            if (custom.lang == "en") {
+                impl_->imgui_.system_font = io.Fonts->AddFontFromFileTTF(
+                        custom.path.c_str(), float(theme.font_size), NULL,
+                        io.Fonts->GetGlyphRangesDefault());
+                en_fonts += 1;
+            }
+        }
+        if (en_fonts == 0) {
+            impl_->imgui_.system_font = io.Fonts->AddFontFromFileTTF(
+                    theme.font_path.c_str(), float(theme.font_size));
+        }
+
+        ImFontConfig config;
+        config.MergeMode = true;
+        for (auto& custom : Application::GetInstance().GetUserFontInfo()) {
+            if (!custom.lang.empty()) {
+                const ImWchar* range;
+                if (custom.lang == "en") {
+                    continue;  // added above, don't want to add cyrillic too
+                } else if (custom.lang == "ja") {
+                    range = io.Fonts->GetGlyphRangesJapanese();
+                } else if (custom.lang == "ko") {
+                    range = io.Fonts->GetGlyphRangesKorean();
+                } else if (custom.lang == "th") {
+                    range = io.Fonts->GetGlyphRangesThai();
+                } else if (custom.lang == "vi") {
+                    range = io.Fonts->GetGlyphRangesVietnamese();
+                } else if (custom.lang == "zh") {
+                    range = io.Fonts->GetGlyphRangesChineseSimplifiedCommon();
+                } else if (custom.lang == "zh_all") {
+                    range = io.Fonts->GetGlyphRangesChineseFull();
+                } else {  // so many languages use Cyrillic it can be the
+                          // default
+                    range = io.Fonts->GetGlyphRangesCyrillic();
+                }
+                impl_->imgui_.system_font = io.Fonts->AddFontFromFileTTF(
+                        custom.path.c_str(), float(theme.font_size), &config,
+                        range);
+            } else if (!custom.code_points.empty()) {
+                ImVector<ImWchar> range;
+                ImFontGlyphRangesBuilder builder;
+                for (auto c : custom.code_points) {
+                    builder.AddChar(c);
+                }
+                builder.BuildRanges(&range);
+                impl_->imgui_.system_font = io.Fonts->AddFontFromFileTTF(
+                        custom.path.c_str(), float(theme.font_size), &config,
+                        range.Data);
+            }
+        }
+
         /*static*/ unsigned char* pixels;
         int textureW, textureH, bytesPerPx;
         io.Fonts->GetTexDataAsAlpha8(&pixels, &textureW, &textureH,
                                      &bytesPerPx);
+        // Some fonts seem to result in 0x0 textures (maybe if the font does
+        // not contain any of the code points?), which cause Filament to
+        // panic. Handle this gracefully.
+        if (textureW == 0 || textureH == 0) {
+            utility::LogWarning(
+                    "Got zero-byte font texture; ignoring custom fonts");
+            io.Fonts->Clear();
+            impl_->imgui_.system_font = io.Fonts->AddFontFromFileTTF(
+                    theme.font_path.c_str(), float(theme.font_size));
+            io.Fonts->GetTexDataAsAlpha8(&pixels, &textureW, &textureH,
+                                         &bytesPerPx);
+        }
         impl_->imgui_.imgui_bridge->CreateAtlasTextureAlpha8(
                 pixels, textureW, textureH, bytesPerPx);
         ImGui::SetCurrentFont(impl_->imgui_.system_font);
@@ -627,6 +690,15 @@ void Window::CloseDialog() {
     impl_->active_dialog_.reset();
 
     ForceRedrawSceneWidget();
+
+    // Closing a dialog does not change the layout of widgets so the following
+    // is not necessary. However, on Apple, ForceRedrawSceneWidget isn't
+    // sufficent to force a SceneWidget to redraw and therefore flickering of
+    // the now closed dialog may occur. SetNeedsLayout ensures that
+    // SceneWidget::Layout gets called which will guarantee proper redraw of the
+    // SceneWidget.
+    SetNeedsLayout();
+
     // The dialog might not be closing from within a draw call, such as when
     // a native file dialog closes, so we need to post a redraw, just in case.
     // If it is from within a draw call, then any redraw request from that will

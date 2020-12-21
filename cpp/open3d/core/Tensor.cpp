@@ -654,7 +654,7 @@ Tensor Tensor::Slice(int64_t dim,
         utility::LogError("Step size cannot be 0.");
     } else if (step < 0) {
         // TODO: support negative step sizes
-        utility::LogError("Step size cannot be 0.");
+        utility::LogError("Step size cannot be < 0.");
     }
 
     // Wrap start. Out-of-range slice is valid and produces empty Tensor.
@@ -765,6 +765,17 @@ Tensor Tensor::T() const {
                 "Tensor::T() expects a Tensor with <= 2 dimensions, but the "
                 "Tensor as {} dimensions.");
     }
+}
+
+double Tensor::Det() const {
+    // TODO: Create a proper op for Determinant.
+    this->AssertShape({3, 3});
+    this->AssertDtype(core::Dtype::Float32);
+    core::Tensor D_ = this->Copy();
+    D_[0][0] = D_[0][0] * (D_[1][1] * D_[2][2] - D_[1][2] * D_[2][1]) -
+               D_[0][1] * (D_[1][0] * D_[2][2] - D_[2][0] * D_[1][2]) +
+               D_[0][2] * (D_[1][0] * D_[2][1] - D_[2][0] * D_[1][1]);
+    return static_cast<double>(D_[0][0].Item<float>());
 }
 
 Tensor Tensor::Add(const Tensor& value) const {
@@ -1081,6 +1092,19 @@ std::vector<Tensor> Tensor::NonZeroNumpy() const {
 
 Tensor Tensor::NonZero() const { return kernel::NonZero(*this); }
 
+bool Tensor::IsNonZero() const {
+    if (shape_.NumElements() != 1) {
+        utility::LogError(
+                "Tensor must have exactly one element to be evaluated as "
+                "boolean.");
+    }
+    bool rc = false;
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        rc = Item<scalar_t>() != static_cast<scalar_t>(0);
+    });
+    return rc;
+}
+
 bool Tensor::All() const {
     Tensor dst({}, dtype_, GetDevice());
     kernel::Reduction(*this, dst, shape_util::Iota(NumDims()), false,
@@ -1224,9 +1248,27 @@ bool Tensor::IsSame(const Tensor& other) const {
 
 void Tensor::AssertShape(const SizeVector& expected_shape) const {
     if (shape_ != expected_shape) {
-        utility::LogError(
-                "Tensor shape {} does not match expected shape {}: {}", shape_,
-                expected_shape);
+        utility::LogError("Tensor shape {} does not match expected shape: {}",
+                          shape_, expected_shape);
+    }
+}
+
+void Tensor::AssertShapeCompatible(
+        const DynamicSizeVector& expected_shape) const {
+    GetShape().AssertCompatible(expected_shape);
+}
+
+void Tensor::AssertDevice(const Device& expected_device) const {
+    if (GetDevice() != expected_device) {
+        utility::LogError("Tensor has device {}, but is expected to be {}.",
+                          GetDevice().ToString(), expected_device.ToString());
+    }
+}
+
+void Tensor::AssertDtype(const Dtype& expected_dtype) const {
+    if (GetDtype() != expected_dtype) {
+        utility::LogError("Tensor has dtype {}, but is expected to be {}.",
+                          GetDtype().ToString(), expected_dtype.ToString());
     }
 }
 

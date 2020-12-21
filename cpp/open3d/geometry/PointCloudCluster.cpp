@@ -39,24 +39,13 @@ std::vector<int> PointCloud::ClusterDBSCAN(double eps,
                                            bool print_progress) const {
     KDTreeFlann kdtree(*this);
 
-    // precompute all neighbours
-    utility::LogDebug("Precompute Neighbours");
-    utility::ConsoleProgressBar progress_bar(
-            points_.size(), "Precompute Neighbours", print_progress);
     std::vector<std::vector<int>> nbs(points_.size());
-#pragma omp parallel for schedule(static)
+#pragma omp parallel for num_threads(4)
     for (int idx = 0; idx < int(points_.size()); ++idx) {
         std::vector<double> dists2;
         kdtree.SearchRadius(points_[idx], eps, nbs[idx], dists2);
-
-#pragma omp critical
-        { ++progress_bar; }
     }
-    utility::LogDebug("Done Precompute Neighbours");
 
-    // set all labels to undefined (-2)
-    utility::LogDebug("Compute Clusters");
-    progress_bar.reset(points_.size(), "Clustering", print_progress);
     std::vector<int> labels(points_.size(), -2);
     int cluster_label = 0;
     for (size_t idx = 0; idx < points_.size(); ++idx) {
@@ -75,7 +64,6 @@ std::vector<int> PointCloud::ClusterDBSCAN(double eps,
         nbs_visited.insert(int(idx));
 
         labels[idx] = cluster_label;
-        ++progress_bar;
         while (!nbs_next.empty()) {
             int nb = *nbs_next.begin();
             nbs_next.erase(nbs_next.begin());
@@ -83,13 +71,11 @@ std::vector<int> PointCloud::ClusterDBSCAN(double eps,
 
             if (labels[nb] == -1) {  // noise label
                 labels[nb] = cluster_label;
-                ++progress_bar;
             }
             if (labels[nb] != -2) {  // not undefined label
                 continue;
             }
             labels[nb] = cluster_label;
-            ++progress_bar;
 
             if (nbs[nb].size() >= min_points) {
                 for (int qnb : nbs[nb]) {
@@ -103,7 +89,6 @@ std::vector<int> PointCloud::ClusterDBSCAN(double eps,
         cluster_label++;
     }
 
-    utility::LogDebug("Done Compute Clusters: {:d}", cluster_label);
     return labels;
 }
 
